@@ -1,0 +1,12 @@
+censusdis==1.4.2
+geopandas==1.0.1
+mapclassify==2.11.0
+pandas==2.3.3
+pydeck==0.9.3
+python-dotenv==1.2.4
+requests==2.34.2
+shapely==2.2.0
+streamlit==1.65.0
+
+# Test dependencies
+pytest==9.1.1
