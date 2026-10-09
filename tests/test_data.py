@@ -199,3 +199,10 @@ def test_load_overpass_rounds_before_cached_boundary(monkeypatch):
     data.load_overpass_pois((32.900004, -97.100004, 33.100004, -96.900004))
 
     assert observed["bounds"] == (32.9, -97.1, 33.1, -96.9)
+
+def test_overpass_query_includes_all_hairdressers():
+    query = data.build_overpass_query((32.9, -97.1, 33.1, -96.9))
+
+    assert 'nwr["shop"="hairdresser"](32.9,-97.1,33.1,-96.9)' in query
+    assert "name~" not in query
+

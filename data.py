@@ -110,7 +110,7 @@ def build_overpass_query(
   nwr["amenity"="school"]({bbox});
   nwr["healthcare"="paediatrician"]({bbox});
   nwr["amenity"="clinic"]({bbox});
-  nwr["shop"="hairdresser"]["name"~"Salon|Cuts|Hair",i]({bbox});
+  nwr["shop"="hairdresser"]({bbox});
 );
 out center;"""
 
