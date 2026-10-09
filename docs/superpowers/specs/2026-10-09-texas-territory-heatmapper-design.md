@@ -58,17 +58,25 @@ demographic filters exclude the selected ZCTA, and the UI explains that state.
 
 ## OpenStreetMap data flow
 
-When any POI overlay is enabled, one HTTPS POST requests all three categories
-from Overpass for the selected territory's bounding box. With no selected
-territory, the request uses a fixed DFW bounding box. The 24-hour cache is
-keyed by rounded bounds, so toggling categories filters one cached response
-locally instead of generating additional network traffic.
+When any POI overlay is enabled, one HTTPS POST requests only the enabled
+territory aids and selected business types from Overpass for the selected
+territory's bounding box. With no selected territory, the request uses a fixed
+DFW bounding box. Overpass/POI responses are Streamlit-cached for six hours,
+keyed by rounded bounds and the sorted selected category set, so repeat
+toggles reuse a prior fetch. HTTP 429 responses pause briefly and retry once.
+Census demographics remain cached for 24 hours. Bounds are still rounded for
+stable query strings.
 
-The query uses `nwr` selectors and `out center` so nodes, ways, and relations
-can be displayed. A descriptive User-Agent, timeout, status checks, and JSON
-validation protect the public service. Results normalize to name, category,
-latitude, and longitude. OpenStreetMap coverage is described as indicative,
-not a complete market inventory.
+Territory aids are schools and pediatricians/clinics. Business overlays come
+from a curated North Texas catalog (hair salons, beauty, barber, cafe,
+restaurant, fast food, gym, pharmacy, childcare, dentist, veterinary, auto
+repair, car wash, laundry, pet store, bakery, convenience, real estate office,
+garden center). Default business selection is hair salon. The query uses `nwr`
+selectors and `out center` so nodes, ways, and relations can be displayed. A
+descriptive User-Agent, timeout, status checks, and JSON validation protect
+the public service. Results normalize to name, category, latitude, and
+longitude. OpenStreetMap coverage is described as indicative, not a complete
+market inventory.
 
 ## User interface
 
@@ -77,7 +85,8 @@ The sidebar provides:
 - primary metric selection;
 - minimum median household income and Target Kids filters;
 - named-place or ZCTA territory selection;
-- toggles for schools, pediatricians/clinics, and competitor salons; and
+- toggles for schools and pediatricians/clinics;
+- a multiselect of curated business types (default: Hair salon); and
 - a compact explanation of color quantiles and polygon elevation.
 
 The main area provides selected-territory summary cards, filtered ZCTA and POI
@@ -101,16 +110,17 @@ Four review findings extend the initial interface without adding controls:
 - The metric legend uses the same palette as the polygon layer. It shows a
   swatch and lower/upper range for each quantile, formats currency and
   percentage metrics appropriately, and includes a gray “No data” key.
-- Competitor coverage includes every OpenStreetMap element tagged
+- Hair-salon coverage includes every OpenStreetMap element tagged
   `shop=hairdresser`; business-name matching no longer excludes hairdressers
-  whose names omit “Salon,” “Cuts,” or “Hair.”
+  whose names omit “Salon,” “Cuts,” or “Hair.” The competitor checkbox is
+  replaced by the curated business-type multiselect above.
 - Polygon elevation remains tied to Target Kids, but its scale is calculated
   from the selected territory’s 95th percentile when a territory is selected,
   otherwise from the visible ZCTAs. The scale is clamped so sparse or outlier
   data cannot create flat or extreme geometry.
 
 These refinements remain independently testable in `app.py`, `data.py`, and
-`map_view.py`. They do not introduce new dependencies or network requests.
+`map_view.py`. They do not introduce new dependencies.
 
 ## Verification
 
@@ -128,5 +138,6 @@ Automated tests use local fixtures and mocked network boundaries. They cover:
 Acceptance requires a green offline test suite, successful Python
 compile/import checks, and a Streamlit startup smoke test. With live
 credentials, filters and metric changes must reuse cached Census data,
-territory selection must highlight and summarize the area, and POI toggles
-must use the cached combined Overpass response.
+territory selection must highlight and summarize the area, and repeated POI
+selections for the same bounds and category set must reuse the cached
+Overpass response within the six-hour TTL.
