@@ -45,7 +45,7 @@ def poi_frame() -> gpd.GeoDataFrame:
     return gpd.GeoDataFrame(
         {
             "name": ["Oak School", "Kids Health", "Quick Cuts"],
-            "category": ["school", "pediatrician", "competitor"],
+            "category": ["school", "pediatrician", "hairdresser"],
             "latitude": [33.0, 33.01, 33.02],
             "longitude": [-97.0, -97.01, -97.02],
         },
@@ -73,14 +73,14 @@ def test_build_layers_creates_base_outline_and_enabled_pois():
         frame,
         selected=frame.iloc[[0]],
         pois=poi_frame(),
-        enabled_poi_categories={"school", "competitor"},
+        enabled_poi_categories={"school", "hairdresser"},
     )
 
     assert [layer.id for layer in layers] == [
         "demographic-polygons",
         "territory-outline",
         "poi-school",
-        "poi-competitor",
+        "poi-hairdresser",
     ]
     base = json.loads(layers[0].to_json())
     assert base["@@" + "type"] == "PolygonLayer"
@@ -147,4 +147,12 @@ def test_build_layers_applies_provided_elevation_scale():
     payload = json.loads(layers[0].to_json())
 
     assert payload["elevationScale"] == 0.25
+
+def test_poi_colors_and_labels_come_from_catalog():
+    from map_view import POI_COLORS, POI_LABELS
+
+    assert POI_LABELS["hairdresser"] == "Hair salon"
+    assert POI_LABELS["cafe"] == "Cafe / coffee"
+    assert POI_COLORS["beauty"] == [251, 113, 133, 220]
+    assert "competitor" not in POI_COLORS
 

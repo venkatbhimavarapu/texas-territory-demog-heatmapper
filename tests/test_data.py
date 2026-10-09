@@ -108,7 +108,7 @@ def test_parse_overpass_handles_nodes_and_centers():
     assert result["category"].tolist() == [
         "school",
         "pediatrician",
-        "competitor",
+        "hairdresser",
     ]
     assert result["name"].tolist() == ["Oak School", "Kids Health", "Quick Cuts"]
     assert result.crs.to_epsg() == 4326
@@ -130,7 +130,7 @@ def test_parse_overpass_uses_fallback_names_and_handles_empty_payload():
     result = data.parse_overpass(payload)
     empty = data.parse_overpass({"elements": []})
 
-    assert result.loc[0, "name"] == "Unnamed pediatrician/clinic"
+    assert result.loc[0, "name"] == "Unnamed pediatrician / clinic"
     assert list(empty.columns) == ["name", "category", "latitude", "longitude", "geometry"]
     assert empty.empty
 
@@ -163,6 +163,8 @@ def test_fetch_overpass_rounds_bounds_and_posts_once(monkeypatch):
     observed = {}
 
     class FakeResponse:
+        status_code = 200
+
         def raise_for_status(self):
             observed["status_checked"] = True
 
@@ -221,22 +223,101 @@ def test_fetch_overpass_uses_next_endpoint_after_gateway_timeout(monkeypatch):
     assert calls[0].endswith("overpass-api.de/api/interpreter")
 
 
-def test_load_overpass_rounds_before_cached_boundary(monkeypatch):
-    observed = {}
+def test_load_overpass_rounds_bounds_and_caches_by_categories(monkeypatch):
+    observed = {"calls": 0}
 
-    def fake_cached(bounds):
+    def fake_fetch(bounds, categories=None):
+        observed["calls"] += 1
         observed["bounds"] = bounds
+        observed["categories"] = set(categories) if categories is not None else None
         return data.parse_overpass({"elements": []})
 
-    monkeypatch.setattr(data, "_load_overpass_pois_cached", fake_cached)
+    monkeypatch.setattr(data, "_fetch_overpass", fake_fetch)
+    data._load_overpass_pois_cached.clear()
 
-    data.load_overpass_pois((32.900004, -97.100004, 33.100004, -96.900004))
+    bounds = (32.900004, -97.100004, 33.100004, -96.900004)
+    data.load_overpass_pois(bounds, categories={"cafe", "beauty"})
+    data.load_overpass_pois(bounds, categories={"beauty", "cafe"})
 
+    assert observed["calls"] == 1
     assert observed["bounds"] == (32.9, -97.1, 33.1, -96.9)
+    assert observed["categories"] == {"beauty", "cafe"}
+
+    data.load_overpass_pois(bounds, categories={"hairdresser"})
+    assert observed["calls"] == 2
+
+
+def test_fetch_overpass_retries_after_rate_limit(monkeypatch):
+    observed = {"posts": 0}
+    monkeypatch.setattr(data, "OVERPASS_RETRY_SECONDS", 0)
+
+    class FakeResponse:
+        def __init__(self, status_code, payload=None):
+            self.status_code = status_code
+            self._payload = payload or {}
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise data.requests.HTTPError(response=self)
+
+        def json(self):
+            return self._payload
+
+    def fake_post(url, **kwargs):
+        observed["posts"] += 1
+        if observed["posts"] == 1:
+            return FakeResponse(429)
+        return FakeResponse(200, overpass_payload())
+
+    monkeypatch.setattr(data.requests, "post", fake_post)
+
+    result = data._fetch_overpass((32.9, -97.1, 33.1, -96.9), categories={"school"})
+
+    assert observed["posts"] == 2
+    assert len(result) == 3
 
 def test_overpass_query_includes_all_hairdressers():
-    query = data.build_overpass_query((32.9, -97.1, 33.1, -96.9))
+    query = data.build_overpass_query(
+        (32.9, -97.1, 33.1, -96.9),
+        categories={"hairdresser"},
+    )
 
     assert 'nwr["shop"="hairdresser"](32.9,-97.1,33.1,-96.9)' in query
     assert "name~" not in query
+    assert 'nwr["amenity"="school"]' not in query
+
+
+def test_overpass_query_includes_only_selected_business_types():
+    query = data.build_overpass_query(
+        (32.9, -97.1, 33.1, -96.9),
+        categories={"beauty", "cafe"},
+    )
+
+    assert 'nwr["shop"="beauty"](32.9,-97.1,33.1,-96.9)' in query
+    assert 'nwr["amenity"="cafe"](32.9,-97.1,33.1,-96.9)' in query
+    assert 'nwr["shop"="hairdresser"]' not in query
+
+
+def test_parse_overpass_maps_catalog_business_types():
+    payload = {
+        "elements": [
+            {
+                "type": "node",
+                "lat": 33.05,
+                "lon": -97.05,
+                "tags": {"shop": "beauty", "name": "Glow Studio"},
+            },
+            {
+                "type": "node",
+                "lat": 33.06,
+                "lon": -97.06,
+                "tags": {"amenity": "cafe", "name": "Bean Co"},
+            },
+        ]
+    }
+
+    result = data.parse_overpass(payload)
+
+    assert result["category"].tolist() == ["beauty", "cafe"]
+    assert result["name"].tolist() == ["Glow Studio", "Bean Co"]
 
