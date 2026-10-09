@@ -13,7 +13,11 @@ import requests
 from dotenv import load_dotenv
 import streamlit as st
 
+import numpy as np
+
 from analysis import (
+    COLOR_PALETTE,
+    MISSING_COLOR,
     NAMED_TERRITORIES,
     TerritorySelectionError,
     add_metrics,
@@ -116,6 +120,54 @@ def _render_summary(selected: gpd.GeoDataFrame | None) -> None:
     )
 
 
+def partial_filter_notice(
+    selected: gpd.GeoDataFrame | None,
+    classified: gpd.GeoDataFrame,
+) -> str | None:
+    """Describe a partially filtered selected territory, if any."""
+    if selected is None or selected.empty:
+        return None
+    visible = int(selected["zcta"].isin(classified["zcta"]).sum())
+    if 0 < visible < len(selected):
+        return f"{visible} of {len(selected)} selected ZCTAs meet filters"
+    return None
+
+
+def legend_rows(
+    metric_label: str,
+    metric: str,
+    bins: list[float],
+) -> list[dict[str, Any]]:
+    """Build swatch legend rows for quantile bins plus a No data key."""
+    del metric_label  # Label is shown by the caller section heading.
+    percent = metric.endswith("_pct")
+    currency = metric == "median_household_income"
+
+    if not bins:
+        return [{"label": "No data", "color": list(MISSING_COLOR)}]
+
+    class_count = len(bins)
+    palette_indexes = np.linspace(0, len(COLOR_PALETTE) - 1, class_count).astype(int)
+    palette = [COLOR_PALETTE[index] for index in palette_indexes]
+
+    rows: list[dict[str, Any]] = []
+    previous: float | None = None
+    for index, upper in enumerate(bins):
+        formatted_upper = _format_metric(upper, currency=currency, percent=percent)
+        if previous is None:
+            label = f"≤ {formatted_upper}"
+        else:
+            formatted_lower = _format_metric(
+                previous, currency=currency, percent=percent
+            )
+            label = f"{formatted_lower} – {formatted_upper}"
+        rows.append({"label": label, "color": list(palette[index])})
+        previous = upper
+
+    rows.append({"label": "No data", "color": list(MISSING_COLOR)})
+    return rows
+
+
 def render_dashboard(
     demographics: gpd.GeoDataFrame,
     *,
@@ -186,6 +238,10 @@ def render_dashboard(
         if selected_outside_filter:
             st.info("The selected territory is outside the active demographic filters.")
 
+    notice = partial_filter_notice(selected, classified)
+    if notice:
+        st.info(notice)
+
     pois = gpd.GeoDataFrame()
     if enabled_categories:
         bounds = territory_bounds(selected) if selected is not None else DFW_BOUNDS
@@ -201,10 +257,20 @@ def render_dashboard(
     count_columns[0].metric("Visible ZCTAs", f"{len(classified):,}")
     count_columns[1].metric("POIs shown", f"{len(pois):,}")
 
-    if bins:
-        st.caption(
-            f"{metric_label} quantile upper bounds: "
-            + " · ".join(_format_metric(value) for value in bins)
+    st.markdown("**Legend**")
+    for row in legend_rows(metric_label, metric, bins):
+        red, green, blue, alpha = row["color"]
+        st.markdown(
+            (
+                '<div style="display:flex;align-items:center;gap:0.5rem;'
+                'margin-bottom:0.25rem">'
+                f'<span style="display:inline-block;width:0.9rem;height:0.9rem;'
+                f'background:rgba({red},{green},{blue},{alpha / 255:.3f});'
+                'border:1px solid #4b5563"></span>'
+                f"<span>{row['label']}</span>"
+                "</div>"
+            ),
+            unsafe_allow_html=True,
         )
 
     layers = build_layers(

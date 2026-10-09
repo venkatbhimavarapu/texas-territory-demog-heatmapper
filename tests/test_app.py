@@ -155,3 +155,30 @@ def test_census_failure_does_not_expose_api_key():
     assert not test_app.exception
     assert test_app.error
     assert "super-secret-key" not in test_app.error[0].value
+
+def test_partial_filter_notice_reports_visible_count():
+    selected = dashboard_frame()
+    classified = selected.iloc[[0]]
+
+    notice = app.partial_filter_notice(selected, classified)
+
+    assert notice == "1 of 2 selected ZCTAs meet filters"
+
+
+def test_partial_filter_notice_skips_full_and_empty_matches():
+    selected = dashboard_frame()
+
+    assert app.partial_filter_notice(selected, selected) is None
+    assert app.partial_filter_notice(selected, selected.iloc[0:0]) is None
+    assert app.partial_filter_notice(None, selected) is None
+
+
+def test_legend_rows_include_swatches_ranges_and_missing_key():
+    rows = app.legend_rows("High Income %", "high_income_pct", [10.0, 20.0, 35.0])
+
+    assert rows[0]["label"] == "≤ 10.0%"
+    assert rows[1]["label"] == "10.0% – 20.0%"
+    assert rows[-1]["label"] == "No data"
+    assert rows[-1]["color"] == [150, 150, 150, 90]
+    assert all("color" in row for row in rows)
+
