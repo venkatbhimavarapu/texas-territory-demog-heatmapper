@@ -3,6 +3,7 @@ import math
 import geopandas as gpd
 import pandas as pd
 import pytest
+import requests
 from shapely.geometry import Point
 
 import data
@@ -185,6 +186,39 @@ def test_fetch_overpass_rounds_bounds_and_posts_once(monkeypatch):
     assert "(32.9,-97.1,33.1,-96.9)" in query
     assert 'nwr["amenity"="school"]' in query
     assert observed["status_checked"] is True
+
+
+def test_fetch_overpass_uses_next_endpoint_after_gateway_timeout(monkeypatch):
+    calls = []
+
+    class FakeResponse:
+        def __init__(self, status_code):
+            self.status_code = status_code
+            self.url = "https://example.test/api/interpreter"
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.HTTPError(
+                    "504 Server Error: Gateway Timeout for url: "
+                    "https://overpass-api.de/api/interpreter",
+                    response=self,
+                )
+
+        def json(self):
+            return overpass_payload()
+
+    def fake_post(url, **kwargs):
+        calls.append(url)
+        return FakeResponse(504 if len(calls) == 1 else 200)
+
+    monkeypatch.setattr(data.requests, "post", fake_post)
+
+    result = data._fetch_overpass((32.9, -97.1, 33.1, -96.9))
+
+    assert len(result) == 3
+    assert len(calls) == 2
+    assert calls[0] != calls[1]
+    assert calls[0].endswith("overpass-api.de/api/interpreter")
 
 
 def test_load_overpass_rounds_before_cached_boundary(monkeypatch):

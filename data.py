@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import logging
 from typing import Any, Final
 
 import censusdis.data as ced
@@ -17,7 +18,13 @@ import streamlit as st
 CENSUS_DATASET: Final = "acs/acs5/subject"
 CENSUS_VINTAGE: Final = 2024
 CACHE_TTL_SECONDS: Final = 86_400
-OVERPASS_URL: Final = "https://overpass-api.de/api/interpreter"
+OVERPASS_URLS: Final[tuple[str, ...]] = (
+    "https://overpass-api.de/api/interpreter",
+    "https://lz4.overpass-api.de/api/interpreter",
+    "https://z.overpass-api.de/api/interpreter",
+)
+OVERPASS_RETRYABLE_STATUS: Final[frozenset[int]] = frozenset({429, 500, 502, 503, 504})
+LOGGER = logging.getLogger(__name__)
 OVERPASS_USER_AGENT: Final = (
     "TexasTerritoryHeatmapper/1.0 "
     "(demographic territory research; contact via repository)"
@@ -190,17 +197,34 @@ def _fetch_overpass(
     bounds: tuple[float, float, float, float],
 ) -> gpd.GeoDataFrame:
     query = build_overpass_query(bounds)
-    response = requests.post(
-        OVERPASS_URL,
-        data={"data": query},
-        headers={"User-Agent": OVERPASS_USER_AGENT},
-        timeout=30,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    if not isinstance(payload, Mapping):
-        raise ValueError("Overpass response must be a JSON object")
-    return parse_overpass(payload)
+    last_error: Exception | None = None
+    for url in OVERPASS_URLS:
+        try:
+            response = requests.post(
+                url,
+                data={"data": query},
+                headers={"User-Agent": OVERPASS_USER_AGENT},
+                timeout=30,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, Mapping):
+                raise ValueError("Overpass response must be a JSON object")
+            return parse_overpass(payload)
+        except requests.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            if status not in OVERPASS_RETRYABLE_STATUS:
+                raise
+            last_error = exc
+            LOGGER.warning("Overpass request to %s failed with HTTP %s", url, status)
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            last_error = exc
+            LOGGER.warning(
+                "Overpass request to %s failed: %s", url, type(exc).__name__
+            )
+    if last_error is None:
+        raise RuntimeError("No Overpass endpoints are configured")
+    raise last_error
 
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner="Loading OpenStreetMap POIs…")
