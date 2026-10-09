@@ -13,6 +13,8 @@ import pandas as pd
 import pydeck as pdk
 from shapely.geometry import mapping
 
+from data import POI_CATALOG
+
 
 TEXAS_VIEW: Final = {
     "latitude": 31.0,
@@ -22,14 +24,10 @@ TEXAS_VIEW: Final = {
     "bearing": 0,
 }
 POI_COLORS: Final = {
-    "school": [52, 211, 153, 220],
-    "pediatrician": [96, 165, 250, 220],
-    "competitor": [244, 114, 182, 220],
+    category_id: list(entry["color"]) for category_id, entry in POI_CATALOG.items()
 }
 POI_LABELS: Final = {
-    "school": "School",
-    "pediatrician": "Pediatrician / clinic",
-    "competitor": "Competitor salon",
+    category_id: str(entry["label"]) for category_id, entry in POI_CATALOG.items()
 }
 
 

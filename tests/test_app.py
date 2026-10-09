@@ -36,7 +36,7 @@ def dashboard_pois() -> gpd.GeoDataFrame:
     return gpd.GeoDataFrame(
         {
             "name": ["Oak School", "Quick Cuts"],
-            "category": ["school", "competitor"],
+            "category": ["school", "hairdresser"],
             "latitude": [33.0, 33.02],
             "longitude": [-97.0, -97.02],
         },
@@ -87,7 +87,7 @@ def test_render_dashboard_builds_with_fixture_data():
             )
         )
 
-        def no_pois(_bounds):
+        def no_pois(_bounds, **_kwargs):
             return gpd.GeoDataFrame()
 
         app.render_dashboard(frame, poi_loader=no_pois)
@@ -126,7 +126,9 @@ def test_all_missing_primary_metric_is_non_crashing():
                 crs="EPSG:4326",
             )
         )
-        app.render_dashboard(frame)
+        app.render_dashboard(
+            frame, poi_loader=lambda _b, **_kwargs: gpd.GeoDataFrame()
+        )
 
     test_app = AppTest.from_function(smoke_missing_metric).run()
     test_app.selectbox[0].select("Median Age").run()
@@ -224,7 +226,7 @@ def test_render_dashboard_passes_adaptive_elevation():
                 crs="EPSG:4326",
             )
         )
-        app.render_dashboard(frame, poi_loader=lambda _b: gpd.GeoDataFrame())
+        app.render_dashboard(frame, poi_loader=lambda _b, **_kwargs: gpd.GeoDataFrame())
 
     AppTest.from_function(smoke).run()
     observed = json.loads(capture_file.read_text())
