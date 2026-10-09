@@ -61,10 +61,11 @@ demographic filters exclude the selected ZCTA, and the UI explains that state.
 When any POI overlay is enabled, one HTTPS POST requests only the enabled
 territory aids and selected business types from Overpass for the selected
 territory's bounding box. With no selected territory, the request uses a fixed
-DFW bounding box. Overpass/POI responses are not Streamlit-cached: each
-selection or territory change refetches (a short spinner is acceptable). Census
-demographics remain cached for 24 hours. Bounds are still rounded for stable
-query strings.
+DFW bounding box. Overpass/POI responses are Streamlit-cached for six hours,
+keyed by rounded bounds and the sorted selected category set, so repeat
+toggles reuse a prior fetch. HTTP 429 responses pause briefly and retry once.
+Census demographics remain cached for 24 hours. Bounds are still rounded for
+stable query strings.
 
 Territory aids are schools and pediatricians/clinics. Business overlays come
 from a curated North Texas catalog (hair salons, beauty, barber, cafe,
@@ -137,6 +138,6 @@ Automated tests use local fixtures and mocked network boundaries. They cover:
 Acceptance requires a green offline test suite, successful Python
 compile/import checks, and a Streamlit startup smoke test. With live
 credentials, filters and metric changes must reuse cached Census data,
-territory selection must highlight and summarize the area, and POI
-selection changes must refetch the requested Overpass categories for the
-active bounds.
+territory selection must highlight and summarize the area, and repeated POI
+selections for the same bounds and category set must reuse the cached
+Overpass response within the six-hour TTL.

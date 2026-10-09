@@ -215,7 +215,7 @@ def render_dashboard(
     )
     st.sidebar.caption(
         "Color shows metric quantiles. Polygon height always shows Target Kids. "
-        "Business overlays refresh from OpenStreetMap when the selection changes."
+        "OpenStreetMap overlays are cached for about six hours per area and selection."
     )
 
     filtered = filter_demographics(
@@ -253,9 +253,8 @@ def render_dashboard(
     if enabled_categories:
         bounds = territory_bounds(selected) if selected is not None else DFW_BOUNDS
         try:
-            with st.spinner("Loading OpenStreetMap POIs…"):
-                loaded = poi_loader(bounds, categories=enabled_categories)
-                pois = filter_pois(loaded, enabled_categories)
+            loaded = poi_loader(bounds, categories=enabled_categories)
+            pois = filter_pois(loaded, enabled_categories)
             if pois.empty:
                 st.info("No enabled OpenStreetMap POIs were found in this area.")
         except (requests.RequestException, ValueError) as exc:

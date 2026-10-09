@@ -1,8 +1,9 @@
-"""Census (cached) and OpenStreetMap (uncached) data access."""
+"""Census and OpenStreetMap data access with polite caching."""
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+import time
 from typing import Any, Final
 
 import censusdis.data as ced
@@ -17,6 +18,8 @@ import streamlit as st
 CENSUS_DATASET: Final = "acs/acs5/subject"
 CENSUS_VINTAGE: Final = 2024
 CACHE_TTL_SECONDS: Final = 86_400
+OVERPASS_CACHE_TTL_SECONDS: Final = 21_600  # 6 hours
+OVERPASS_RETRY_SECONDS: Final = 30
 OVERPASS_URL: Final = "https://overpass-api.de/api/interpreter"
 OVERPASS_USER_AGENT: Final = (
     "TexasTerritoryHeatmapper/1.0 "
@@ -315,22 +318,50 @@ def parse_overpass(payload: Mapping[str, Any]) -> gpd.GeoDataFrame:
     return gpd.GeoDataFrame(rows, columns=POI_COLUMNS, geometry="geometry", crs="EPSG:4326")
 
 
+def _category_cache_key(categories: Iterable[str]) -> str:
+    return ",".join(sorted(categories))
+
+
 def _fetch_overpass(
     bounds: tuple[float, float, float, float],
     categories: Iterable[str] | None = None,
 ) -> gpd.GeoDataFrame:
     query = build_overpass_query(bounds, categories=categories)
-    response = requests.post(
-        OVERPASS_URL,
-        data={"data": query},
-        headers={"User-Agent": OVERPASS_USER_AGENT},
-        timeout=30,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    if not isinstance(payload, Mapping):
-        raise ValueError("Overpass response must be a JSON object")
-    return parse_overpass(payload)
+    last_error: Exception | None = None
+    for attempt in range(2):
+        response = requests.post(
+            OVERPASS_URL,
+            data={"data": query},
+            headers={"User-Agent": OVERPASS_USER_AGENT},
+            timeout=30,
+        )
+        if response.status_code == 429 and attempt == 0:
+            time.sleep(OVERPASS_RETRY_SECONDS)
+            continue
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as exc:
+            last_error = exc
+            break
+        payload = response.json()
+        if not isinstance(payload, Mapping):
+            raise ValueError("Overpass response must be a JSON object")
+        return parse_overpass(payload)
+    if last_error is not None:
+        raise last_error
+    raise requests.HTTPError("Overpass request failed after rate-limit retry")
+
+
+@st.cache_data(
+    ttl=OVERPASS_CACHE_TTL_SECONDS,
+    show_spinner="Loading OpenStreetMap POIs…",
+)
+def _load_overpass_pois_cached(
+    bounds: tuple[float, float, float, float],
+    category_key: str,
+) -> gpd.GeoDataFrame:
+    categories = set(category_key.split(",")) if category_key else set()
+    return _fetch_overpass(bounds, categories=categories)
 
 
 def load_overpass_pois(
@@ -338,6 +369,7 @@ def load_overpass_pois(
     *,
     categories: Iterable[str] | None = None,
 ) -> gpd.GeoDataFrame:
-    """Fetch POIs for the requested categories (uncached Overpass call)."""
+    """Fetch POIs for the requested categories (cached by bounds + category set)."""
     rounded = tuple(round(float(value), 4) for value in bounds)
-    return _fetch_overpass(rounded, categories=_normalize_categories(categories))
+    selected = _normalize_categories(categories)
+    return _load_overpass_pois_cached(rounded, _category_cache_key(selected))
