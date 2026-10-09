@@ -103,4 +103,4 @@ def test_build_deck_contains_stable_tooltip_and_layers():
     payload = json.loads(deck.to_json())
 
     assert payload["layers"][0]["id"] == "demographic-polygons"
-    assert "tooltip_title" in deck.tooltip["html"]
+    assert "tooltip_title" in deck._tooltip["html"]

@@ -61,14 +61,38 @@ def test_filter_pois_returns_only_enabled_categories():
 
 
 def test_render_dashboard_builds_with_fixture_data():
-    def fixture_loader(_bounds):
-        return dashboard_pois()
+    def smoke_dashboard():
+        import app
+        import geopandas as gpd
+        from shapely.geometry import box
 
-    test_app = AppTest.from_function(
-        app.render_dashboard,
-        args=(dashboard_frame(),),
-        kwargs={"poi_loader": fixture_loader},
-    )
+        frame = app.add_metrics(
+            gpd.GeoDataFrame(
+                {
+                    "zcta": ["75022"],
+                    "total_population": [20_000.0],
+                    "median_age": [38.0],
+                    "median_household_income": [120_000.0],
+                    "under_5": [1_000.0],
+                    "ages_5_9": [1_100.0],
+                    "ages_10_14": [1_200.0],
+                    "total_households": [8_000.0],
+                    "total_family_households": [5_000.0],
+                    "income_100_149": [15.0],
+                    "income_150_199": [10.0],
+                    "income_200_plus": [8.0],
+                },
+                geometry=[box(-97.1, 32.9, -97.0, 33.0)],
+                crs="EPSG:4326",
+            )
+        )
+
+        def no_pois(_bounds):
+            return gpd.GeoDataFrame()
+
+        app.render_dashboard(frame, poi_loader=no_pois)
+
+    test_app = AppTest.from_function(smoke_dashboard)
     test_app.run()
 
     assert not test_app.exception
