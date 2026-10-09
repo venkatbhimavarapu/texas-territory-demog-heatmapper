@@ -137,5 +137,6 @@ Automated tests use local fixtures and mocked network boundaries. They cover:
 Acceptance requires a green offline test suite, successful Python
 compile/import checks, and a Streamlit startup smoke test. With live
 credentials, filters and metric changes must reuse cached Census data,
-territory selection must highlight and summarize the area, and POI toggles
-must use the cached combined Overpass response.
+territory selection must highlight and summarize the area, and POI
+selection changes must refetch the requested Overpass categories for the
+active bounds.
