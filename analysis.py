@@ -32,6 +32,14 @@ COLOR_PALETTE: Final[list[list[int]]] = [
 MISSING_COLOR: Final[list[int]] = [150, 150, 150, 90]
 
 
+def palette_for_class_count(class_count: int) -> list[list[int]]:
+    """Return an adaptive RGBA palette sized to the number of quantile classes."""
+    if class_count <= 0:
+        return []
+    indexes = np.linspace(0, len(COLOR_PALETTE) - 1, class_count).astype(int)
+    return [list(COLOR_PALETTE[index]) for index in indexes]
+
+
 class TerritorySelectionError(ValueError):
     """Raised when a territory selection is invalid or unavailable."""
 
@@ -77,17 +85,18 @@ def classify_quantiles(
     if valid.empty:
         raise ValueError(f"{metric} has no usable values")
 
-    class_count = min(maximum_classes, int(valid.nunique()))
-    if class_count == 1:
+    requested_classes = min(maximum_classes, int(valid.nunique()))
+    if requested_classes == 1:
         classes = pd.Series(0, index=valid.index, dtype=int)
         bins = [float(valid.iloc[0])]
     else:
-        classifier = mapclassify.Quantiles(valid.to_numpy(), k=class_count)
+        classifier = mapclassify.Quantiles(valid.to_numpy(), k=requested_classes)
         classes = pd.Series(classifier.yb, index=valid.index, dtype=int)
         bins = [float(value) for value in classifier.bins]
 
-    palette_indexes = np.linspace(0, len(COLOR_PALETTE) - 1, class_count).astype(int)
-    palette = [COLOR_PALETTE[index] for index in palette_indexes]
+    # Size the palette from the bins mapclassify actually produced so legend
+    # and polygon fill colors stay aligned when ties collapse classes.
+    palette = palette_for_class_count(len(bins))
 
     result = frame.copy()
     result["class_id"] = -1

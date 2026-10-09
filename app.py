@@ -13,16 +13,14 @@ import requests
 from dotenv import load_dotenv
 import streamlit as st
 
-import numpy as np
-
 from analysis import (
-    COLOR_PALETTE,
     MISSING_COLOR,
     NAMED_TERRITORIES,
     TerritorySelectionError,
     add_metrics,
     classify_quantiles,
     filter_demographics,
+    palette_for_class_count,
     select_territory,
     territory_bounds,
 )
@@ -146,9 +144,7 @@ def legend_rows(
     if not bins:
         return [{"label": "No data", "color": list(MISSING_COLOR)}]
 
-    class_count = len(bins)
-    palette_indexes = np.linspace(0, len(COLOR_PALETTE) - 1, class_count).astype(int)
-    palette = [COLOR_PALETTE[index] for index in palette_indexes]
+    palette = palette_for_class_count(len(bins))
 
     rows: list[dict[str, Any]] = []
     previous: float | None = None

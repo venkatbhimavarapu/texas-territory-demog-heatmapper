@@ -232,3 +232,26 @@ def test_render_dashboard_passes_adaptive_elevation():
     assert observed["elevation_scale"] is not None
     assert observed["elevation_scale"] > 0
 
+
+def test_legend_colors_match_classified_fill_colors_with_ties():
+    """Legend palette must match classify_quantiles when mapclassify collapses bins."""
+    from analysis import classify_quantiles
+
+    frame = gpd.GeoDataFrame(
+        {
+            "zcta": [str(i) for i in range(10)],
+            "high_income_pct": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0],
+        },
+        geometry=[box(i, 0, i + 0.5, 0.5) for i in range(10)],
+        crs="EPSG:4326",
+    )
+    classified, bins = classify_quantiles(frame, "high_income_pct")
+    rows = app.legend_rows("High Income %", "high_income_pct", bins)
+
+    for class_id, color in (
+        classified.loc[classified["class_id"] >= 0, ["class_id", "fill_color"]]
+        .drop_duplicates("class_id")
+        .itertuples(index=False)
+    ):
+        assert rows[int(class_id)]["color"] == list(color)
+
