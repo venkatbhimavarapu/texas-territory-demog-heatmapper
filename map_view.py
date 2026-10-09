@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+import html
 import math
 from typing import Any, Final
 
@@ -66,7 +67,9 @@ def polygon_records(frame: gpd.GeoDataFrame) -> list[dict[str, Any]]:
 
         record = row.drop(labels=["geometry"]).to_dict()
         record["polygon"] = _lists(geometry_mapping["coordinates"])
-        record["tooltip_title"] = f"ZCTA {record.get('zcta', 'Unknown')}"
+        record["tooltip_title"] = html.escape(
+            f"ZCTA {record.get('zcta', 'Unknown')}"
+        )
         record["tooltip_line_1"] = (
             f"Population: {_display_number(record.get('total_population'))}"
         )
@@ -84,12 +87,13 @@ def polygon_records(frame: gpd.GeoDataFrame) -> list[dict[str, Any]]:
 def _poi_records(frame: gpd.GeoDataFrame) -> list[dict[str, Any]]:
     records = []
     for row in frame.itertuples(index=False):
+        safe_name = html.escape(str(row.name))
         records.append(
             {
                 "name": row.name,
                 "category": row.category,
                 "position": [float(row.longitude), float(row.latitude)],
-                "tooltip_title": row.name,
+                "tooltip_title": safe_name,
                 "tooltip_line_1": POI_LABELS[row.category],
                 "tooltip_line_2": "",
                 "tooltip_line_3": "",

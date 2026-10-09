@@ -131,6 +131,9 @@ def _empty_pois() -> gpd.GeoDataFrame:
 
 def parse_overpass(payload: Mapping[str, Any]) -> gpd.GeoDataFrame:
     """Normalize Overpass nodes and way/relation centers."""
+    if payload.get("remark"):
+        raise ValueError(f"Overpass service returned: {payload['remark']}")
+
     elements = payload.get("elements", [])
     if not isinstance(elements, list):
         raise ValueError("Overpass response 'elements' must be a list")
@@ -152,18 +155,29 @@ def parse_overpass(payload: Mapping[str, Any]) -> gpd.GeoDataFrame:
             continue
 
         center = element.get("center") or {}
-        latitude = element.get("lat", center.get("lat"))
-        longitude = element.get("lon", center.get("lon"))
+        if not isinstance(center, Mapping):
+            center = {}
+        latitude = element.get("lat")
+        longitude = element.get("lon")
+        if latitude is None:
+            latitude = center.get("lat")
+        if longitude is None:
+            longitude = center.get("lon")
         if latitude is None or longitude is None:
+            continue
+        try:
+            latitude = float(latitude)
+            longitude = float(longitude)
+        except (TypeError, ValueError):
             continue
 
         rows.append(
             {
                 "name": str(tags.get("name") or fallback_names[category]),
                 "category": category,
-                "latitude": float(latitude),
-                "longitude": float(longitude),
-                "geometry": Point(float(longitude), float(latitude)),
+                "latitude": latitude,
+                "longitude": longitude,
+                "geometry": Point(longitude, latitude),
             }
         )
 
@@ -190,9 +204,15 @@ def _fetch_overpass(
 
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner="Loading OpenStreetMap POIs…")
+def _load_overpass_pois_cached(
+    bounds: tuple[float, float, float, float],
+) -> gpd.GeoDataFrame:
+    return _fetch_overpass(bounds)
+
+
 def load_overpass_pois(
     bounds: tuple[float, float, float, float],
 ) -> gpd.GeoDataFrame:
-    """Return a cached combined POI response for rounded bounds."""
+    """Round bounds before using them as the combined POI cache key."""
     rounded = tuple(round(float(value), 4) for value in bounds)
-    return _fetch_overpass(rounded)
+    return _load_overpass_pois_cached(rounded)

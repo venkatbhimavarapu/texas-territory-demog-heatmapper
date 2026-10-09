@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+import logging
 import os
 from typing import Any, Final
 
@@ -33,6 +34,7 @@ METRICS: Final[dict[str, str]] = {
 }
 DFW_BOUNDS: Final = (32.55, -97.55, 33.45, -96.45)
 PoiLoader = Callable[[tuple[float, float, float, float]], gpd.GeoDataFrame]
+LOGGER = logging.getLogger(__name__)
 
 
 def territory_summary(frame: gpd.GeoDataFrame) -> dict[str, float]:
@@ -167,7 +169,17 @@ def render_dashboard(
         st.warning("No ZCTAs meet the active demographic filters.")
         classified = filtered.copy()
     else:
-        classified, bins = classify_quantiles(filtered, metric)
+        try:
+            classified, bins = classify_quantiles(filtered, metric)
+        except ValueError:
+            st.warning(
+                f"{metric_label} has no usable values; polygons are shown in gray."
+            )
+            classified = filtered.copy()
+            classified["class_id"] = -1
+            classified["fill_color"] = [
+                [150, 150, 150, 90] for _ in range(len(classified))
+            ]
 
     if selected is not None and not selected.empty:
         selected_outside_filter = not selected["zcta"].isin(classified["zcta"]).any()
@@ -224,7 +236,11 @@ def main() -> None:
     try:
         demographics = add_metrics(load_census_data(api_key))
     except Exception as exc:
-        st.error(f"Unable to load Census demographics: {exc}")
+        LOGGER.error("Census load failed: %s", type(exc).__name__)
+        st.error(
+            "Unable to load Census demographics. Check the API key and network "
+            "connection, then try again."
+        )
         st.stop()
     render_dashboard(demographics)
 
