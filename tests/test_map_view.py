@@ -104,3 +104,19 @@ def test_build_deck_contains_stable_tooltip_and_layers():
 
     assert payload["layers"][0]["id"] == "demographic-polygons"
     assert "tooltip_title" in deck._tooltip["html"]
+
+
+def test_poi_tooltip_escapes_untrusted_osm_names():
+    pois = poi_frame().iloc[[0]].copy()
+    pois.loc[pois.index[0], "name"] = "<img src=x onerror=alert(1)>"
+
+    layers = build_layers(
+        mapped_frame(),
+        pois=pois,
+        enabled_poi_categories={"school"},
+    )
+    payload = json.loads(layers[-1].to_json())
+
+    assert payload["data"][0]["tooltip_title"] == (
+        "&lt;img src=x onerror=alert(1)&gt;"
+    )

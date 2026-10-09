@@ -98,3 +98,60 @@ def test_render_dashboard_builds_with_fixture_data():
     assert not test_app.exception
     assert test_app.title[0].value == "Texas Territory Demographic Heatmapper"
     assert len(test_app.metric) >= 2
+
+
+def test_all_missing_primary_metric_is_non_crashing():
+    def smoke_missing_metric():
+        import app
+        import geopandas as gpd
+        from shapely.geometry import box
+
+        frame = app.add_metrics(
+            gpd.GeoDataFrame(
+                {
+                    "zcta": ["75022"],
+                    "total_population": [20_000.0],
+                    "median_age": [float("nan")],
+                    "median_household_income": [120_000.0],
+                    "under_5": [1_000.0],
+                    "ages_5_9": [1_100.0],
+                    "ages_10_14": [1_200.0],
+                    "total_households": [8_000.0],
+                    "total_family_households": [5_000.0],
+                    "income_100_149": [15.0],
+                    "income_150_199": [10.0],
+                    "income_200_plus": [8.0],
+                },
+                geometry=[box(-97.1, 32.9, -97.0, 33.0)],
+                crs="EPSG:4326",
+            )
+        )
+        app.render_dashboard(frame)
+
+    test_app = AppTest.from_function(smoke_missing_metric).run()
+    test_app.selectbox[0].select("Median Age").run()
+
+    assert not test_app.exception
+    assert any("no usable values" in warning.value.lower() for warning in test_app.warning)
+
+
+def test_census_failure_does_not_expose_api_key():
+    def smoke_census_failure():
+        import os
+        import app
+
+        os.environ["CENSUS_API_KEY"] = "super-secret-key"
+
+        def fail_with_key(_api_key):
+            raise RuntimeError(
+                "https://api.census.gov/data?key=super-secret-key failed"
+            )
+
+        app.load_census_data = fail_with_key
+        app.main()
+
+    test_app = AppTest.from_function(smoke_census_failure).run()
+
+    assert not test_app.exception
+    assert test_app.error
+    assert "super-secret-key" not in test_app.error[0].value

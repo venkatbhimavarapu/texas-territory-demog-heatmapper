@@ -139,6 +139,25 @@ def test_parse_overpass_rejects_malformed_elements():
         data.parse_overpass({"elements": "not-a-list"})
 
 
+def test_parse_overpass_rejects_service_remarks():
+    with pytest.raises(ValueError, match="rate limit"):
+        data.parse_overpass({"remark": "rate limit exceeded", "elements": []})
+
+
+def test_parse_overpass_skips_malformed_centers():
+    payload = {
+        "elements": [
+            {
+                "type": "way",
+                "center": "not-an-object",
+                "tags": {"amenity": "school", "name": "Broken geometry"},
+            }
+        ]
+    }
+
+    assert data.parse_overpass(payload).empty
+
+
 def test_fetch_overpass_rounds_bounds_and_posts_once(monkeypatch):
     observed = {}
 
@@ -166,3 +185,17 @@ def test_fetch_overpass_rounds_bounds_and_posts_once(monkeypatch):
     assert "(32.9,-97.1,33.1,-96.9)" in query
     assert 'nwr["amenity"="school"]' in query
     assert observed["status_checked"] is True
+
+
+def test_load_overpass_rounds_before_cached_boundary(monkeypatch):
+    observed = {}
+
+    def fake_cached(bounds):
+        observed["bounds"] = bounds
+        return data.parse_overpass({"elements": []})
+
+    monkeypatch.setattr(data, "_load_overpass_pois_cached", fake_cached)
+
+    data.load_overpass_pois((32.900004, -97.100004, 33.100004, -96.900004))
+
+    assert observed["bounds"] == (32.9, -97.1, 33.1, -96.9)
