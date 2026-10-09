@@ -27,7 +27,7 @@ from analysis import (
     territory_bounds,
 )
 from data import load_census_data, load_overpass_pois
-from map_view import build_deck, build_layers, view_state_for
+from map_view import build_deck, build_layers, elevation_scale_for, view_state_for
 
 
 METRICS: Final[dict[str, str]] = {
@@ -273,11 +273,13 @@ def render_dashboard(
             unsafe_allow_html=True,
         )
 
+    elevation_source = classified if not classified.empty else demographics
     layers = build_layers(
         classified,
         selected=selected,
         pois=pois,
         enabled_poi_categories=enabled_categories,
+        elevation_scale=elevation_scale_for(elevation_source, selected),
     )
     deck = build_deck(layers, view_state_for(demographics, selected))
     st.pydeck_chart(deck, width="stretch", height=650, key="territory-map")

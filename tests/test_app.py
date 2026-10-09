@@ -182,3 +182,53 @@ def test_legend_rows_include_swatches_ranges_and_missing_key():
     assert rows[-1]["color"] == [150, 150, 150, 90]
     assert all("color" in row for row in rows)
 
+def test_render_dashboard_passes_adaptive_elevation():
+    import json
+    from pathlib import Path
+
+    capture_file = Path("/tmp/texas_heatmapper_elevation_scale.json")
+    capture_file.unlink(missing_ok=True)
+
+    def smoke():
+        import json
+        from pathlib import Path
+
+        import app
+        import geopandas as gpd
+        from shapely.geometry import box
+
+        def fake_build_layers(*args, **kwargs):
+            Path("/tmp/texas_heatmapper_elevation_scale.json").write_text(
+                json.dumps({"elevation_scale": kwargs.get("elevation_scale")})
+            )
+            return []
+
+        app.build_layers = fake_build_layers
+        frame = app.add_metrics(
+            gpd.GeoDataFrame(
+                {
+                    "zcta": ["75022"],
+                    "total_population": [20_000.0],
+                    "median_age": [38.0],
+                    "median_household_income": [120_000.0],
+                    "under_5": [1_000.0],
+                    "ages_5_9": [1_100.0],
+                    "ages_10_14": [1_200.0],
+                    "total_households": [8_000.0],
+                    "total_family_households": [5_000.0],
+                    "income_100_149": [15.0],
+                    "income_150_199": [10.0],
+                    "income_200_plus": [8.0],
+                },
+                geometry=[box(-97.1, 32.9, -97.0, 33.0)],
+                crs="EPSG:4326",
+            )
+        )
+        app.render_dashboard(frame, poi_loader=lambda _b: gpd.GeoDataFrame())
+
+    AppTest.from_function(smoke).run()
+    observed = json.loads(capture_file.read_text())
+    assert "elevation_scale" in observed
+    assert observed["elevation_scale"] is not None
+    assert observed["elevation_scale"] > 0
+
