@@ -91,6 +91,27 @@ actionable message. Invalid territories, empty filters, empty POI responses,
 and Overpass errors produce non-crashing notices. Overpass failures never
 remove an otherwise usable demographic map.
 
+## Review follow-up
+
+Four review findings extend the initial interface without adding controls:
+
+- When only part of a selected named territory meets the active filters, the
+  app reports the visible count as “X of Y selected ZCTAs meet filters.” The
+  full selected outline remains visible for context.
+- The metric legend uses the same palette as the polygon layer. It shows a
+  swatch and lower/upper range for each quantile, formats currency and
+  percentage metrics appropriately, and includes a gray “No data” key.
+- Competitor coverage includes every OpenStreetMap element tagged
+  `shop=hairdresser`; business-name matching no longer excludes hairdressers
+  whose names omit “Salon,” “Cuts,” or “Hair.”
+- Polygon elevation remains tied to Target Kids, but its scale is calculated
+  from the selected territory’s 95th percentile when a territory is selected,
+  otherwise from the visible ZCTAs. The scale is clamped so sparse or outlier
+  data cannot create flat or extreme geometry.
+
+These refinements remain independently testable in `app.py`, `data.py`, and
+`map_view.py`. They do not introduce new dependencies or network requests.
+
 ## Verification
 
 Automated tests use local fixtures and mocked network boundaries. They cover:
@@ -100,7 +121,8 @@ Automated tests use local fixtures and mocked network boundaries. They cover:
 - quantile edge cases;
 - named-place/ZCTA lookup and territory bounds;
 - Overpass nodes, way/relation centers, categories, and malformed responses;
-- map layer construction and tooltip fields; and
+- map layer construction, adaptive elevation, tooltip fields, and legends;
+- partial selected-territory filtering and broad hairdresser queries; and
 - an application import/build smoke path.
 
 Acceptance requires a green offline test suite, successful Python
