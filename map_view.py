@@ -8,6 +8,8 @@ import math
 from typing import Any, Final
 
 import geopandas as gpd
+import numpy as np
+import pandas as pd
 import pydeck as pdk
 from shapely.geometry import mapping
 
@@ -102,14 +104,44 @@ def _poi_records(frame: gpd.GeoDataFrame) -> list[dict[str, Any]]:
     return records
 
 
+def elevation_scale_for(
+    demographics: gpd.GeoDataFrame,
+    selected: gpd.GeoDataFrame | None = None,
+) -> float:
+    """Return a clamped elevation scale from Target Kids percentiles."""
+
+    def finite_kids(frame: gpd.GeoDataFrame) -> pd.Series:
+        if frame is None or frame.empty or "target_kids" not in frame:
+            return pd.Series(dtype=float)
+        values = pd.to_numeric(frame["target_kids"], errors="coerce")
+        return values[np.isfinite(values)]
+
+    source = finite_kids(selected) if selected is not None else pd.Series(dtype=float)
+    if source.empty:
+        source = finite_kids(demographics)
+    if source.empty:
+        return 0.05
+
+    reference = float(np.percentile(source.to_numpy(), 95))
+    if reference <= 0:
+        return 0.05
+    return float(np.clip(500.0 / reference, 0.05, 5.0))
+
+
 def build_layers(
     demographics: gpd.GeoDataFrame,
     *,
     selected: gpd.GeoDataFrame | None = None,
     pois: gpd.GeoDataFrame | None = None,
     enabled_poi_categories: Iterable[str] = (),
+    elevation_scale: float | None = None,
 ) -> list[pdk.Layer]:
     """Build demographic, selection, and enabled POI layers."""
+    scale = (
+        elevation_scale
+        if elevation_scale is not None
+        else elevation_scale_for(demographics, selected)
+    )
     layers: list[pdk.Layer] = [
         pdk.Layer(
             "PolygonLayer",
@@ -119,7 +151,7 @@ def build_layers(
             get_fill_color="fill_color",
             get_line_color=[255, 255, 255, 70],
             get_elevation="target_kids",
-            elevation_scale=2,
+            elevation_scale=scale,
             extruded=True,
             filled=True,
             stroked=True,

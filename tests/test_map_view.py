@@ -4,9 +4,12 @@ import geopandas as gpd
 from shapely.geometry import MultiPolygon, Point, box
 
 from analysis import add_metrics, classify_quantiles
+import pytest
+
 from map_view import (
     build_deck,
     build_layers,
+    elevation_scale_for,
     polygon_records,
     view_state_for,
 )
@@ -120,3 +123,28 @@ def test_poi_tooltip_escapes_untrusted_osm_names():
     assert payload["data"][0]["tooltip_title"] == (
         "&lt;img src=x onerror=alert(1)&gt;"
     )
+
+def test_elevation_scale_uses_selected_territory_percentile():
+    demographics = mapped_frame()
+    selected = demographics.iloc[[0]].copy()
+    selected.loc[selected.index[0], "target_kids"] = 1_000.0
+
+    scale = elevation_scale_for(demographics, selected)
+
+    assert scale == pytest.approx(500.0 / 1_000.0)
+
+
+def test_elevation_scale_clamps_empty_or_missing_target_kids():
+    empty = mapped_frame().iloc[0:0]
+    missing = mapped_frame().assign(target_kids=float("nan"))
+
+    assert elevation_scale_for(empty) == 0.05
+    assert elevation_scale_for(missing) == 0.05
+
+
+def test_build_layers_applies_provided_elevation_scale():
+    layers = build_layers(mapped_frame(), elevation_scale=0.25)
+    payload = json.loads(layers[0].to_json())
+
+    assert payload["elevationScale"] == 0.25
+
