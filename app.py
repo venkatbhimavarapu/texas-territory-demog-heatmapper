@@ -24,7 +24,7 @@ from analysis import (
     select_territory,
     territory_bounds,
 )
-from data import load_census_data, load_overpass_pois
+from data import BUSINESS_TYPES, load_census_data, load_overpass_pois
 from map_view import build_deck, build_layers, elevation_scale_for, view_state_for
 
 
@@ -35,7 +35,10 @@ METRICS: Final[dict[str, str]] = {
     "Median Age": "median_age",
 }
 DFW_BOUNDS: Final = (32.55, -97.55, 33.45, -96.45)
-PoiLoader = Callable[[tuple[float, float, float, float]], gpd.GeoDataFrame]
+BUSINESS_LABELS: Final[dict[str, str]] = {
+    entry["label"]: category_id for category_id, entry in BUSINESS_TYPES.items()
+}
+PoiLoader = Callable[..., gpd.GeoDataFrame]
 LOGGER = logging.getLogger(__name__)
 
 
@@ -56,6 +59,8 @@ def filter_pois(
     frame: gpd.GeoDataFrame, enabled_categories: Iterable[str]
 ) -> gpd.GeoDataFrame:
     """Return only the POI categories enabled in the sidebar."""
+    if frame.empty or "category" not in frame.columns:
+        return frame.copy()
     return frame.loc[frame["category"].isin(set(enabled_categories))].copy()
 
 
@@ -195,16 +200,22 @@ def render_dashboard(
     selected = _territory_control(demographics)
 
     st.sidebar.subheader("OpenStreetMap overlays")
-    overlay_choices = {
-        "school": st.sidebar.checkbox("Schools"),
-        "pediatrician": st.sidebar.checkbox("Pediatricians / clinics"),
-        "competitor": st.sidebar.checkbox("Competitor salons"),
-    }
-    enabled_categories = {
-        category for category, enabled in overlay_choices.items() if enabled
-    }
+    enabled_categories: set[str] = set()
+    if st.sidebar.checkbox("Schools"):
+        enabled_categories.add("school")
+    if st.sidebar.checkbox("Pediatricians / clinics"):
+        enabled_categories.add("pediatrician")
+    selected_business_labels = st.sidebar.multiselect(
+        "Business types",
+        options=tuple(BUSINESS_LABELS),
+        default=(BUSINESS_TYPES["hairdresser"]["label"],),
+    )
+    enabled_categories.update(
+        BUSINESS_LABELS[label] for label in selected_business_labels
+    )
     st.sidebar.caption(
-        "Color shows metric quantiles. Polygon height always shows Target Kids."
+        "Color shows metric quantiles. Polygon height always shows Target Kids. "
+        "Business overlays refresh from OpenStreetMap when the selection changes."
     )
 
     filtered = filter_demographics(
@@ -242,7 +253,9 @@ def render_dashboard(
     if enabled_categories:
         bounds = territory_bounds(selected) if selected is not None else DFW_BOUNDS
         try:
-            pois = filter_pois(poi_loader(bounds), enabled_categories)
+            with st.spinner("Loading OpenStreetMap POIs…"):
+                loaded = poi_loader(bounds, categories=enabled_categories)
+                pois = filter_pois(loaded, enabled_categories)
             if pois.empty:
                 st.info("No enabled OpenStreetMap POIs were found in this area.")
         except (requests.RequestException, ValueError) as exc:
