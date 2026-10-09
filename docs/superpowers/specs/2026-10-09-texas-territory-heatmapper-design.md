@@ -23,10 +23,12 @@ does not add a database, authentication, exports, or deployment concerns.
 ## Census data flow
 
 The Census loader queries the 2024 `acs/acs5/subject` dataset through
-`censusdis`. ZCTAs are not ordinary children of states, so the query uses the
-Texas pseudo-geography `pseudo(0400000US48$8600000)` rather than
-`state="48"`. It requests only the estimates needed from S0101, S1101, and
-S1901, includes geometry, and caches the result for 24 hours.
+`censusdis`. ZCTAs are not ordinary children of states, so the loader uses
+`download_contained_within={"state": "48"}` with a positive intersection
+threshold rather than the invalid `state="48"`/ZCTA hierarchy. This is the
+supported `censusdis` equivalent of asking for Texas-intersecting ZCTAs while
+also retrieving geometry. It requests only the estimates needed from S0101,
+S1101, and S1901, includes geometry, and caches the result for 24 hours.
 
 The loader replaces Census sentinel values with missing values, coerces
 estimate columns to numeric values, gives columns stable display-oriented
