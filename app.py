@@ -310,7 +310,12 @@ def main() -> None:
         """,
         unsafe_allow_html=True,
     )
-    load_dotenv()
+    if not os.environ.get("CENSUS_API_KEY"):
+        LOGGER.info(
+            "CENSUS_API_KEY not found in OS environment. Loading local .env file..."
+        )
+        load_dotenv()
+
     api_key = os.getenv("CENSUS_API_KEY", "").strip()
     if not api_key:
         st.error(
