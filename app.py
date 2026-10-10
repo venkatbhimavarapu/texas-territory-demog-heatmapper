@@ -300,6 +300,7 @@ def render_dashboard(
 def main() -> None:
     """Load configuration and data, then render the application."""
     st.set_page_config(page_title="Texas Territory Heatmapper", layout="wide")
+    st.set_option("client.toolbarMode", "minimal")
     load_dotenv()
     api_key = os.getenv("CENSUS_API_KEY", "").strip()
     if not api_key:

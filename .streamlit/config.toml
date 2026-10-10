@@ -1,0 +1,3 @@
+[client]
+# Hide Deploy and the top-right overflow menu for a clean viewer chrome.
+toolbarMode = "minimal"
