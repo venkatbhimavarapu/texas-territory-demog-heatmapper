@@ -301,6 +301,15 @@ def main() -> None:
     """Load configuration and data, then render the application."""
     st.set_page_config(page_title="Texas Territory Heatmapper", layout="wide")
     st.set_option("client.toolbarMode", "minimal")
+    st.markdown(
+        """
+        <style>
+        [data-testid="stAppDeployButton"] {display: none;}
+        [data-testid="stStatusWidget"] button {display: none;}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     load_dotenv()
     api_key = os.getenv("CENSUS_API_KEY", "").strip()
     if not api_key:

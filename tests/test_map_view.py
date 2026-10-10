@@ -1,7 +1,7 @@
 import json
 
 import geopandas as gpd
-from shapely.geometry import MultiPolygon, Point, box
+from shapely.geometry import MultiPolygon, Point, Polygon, box
 
 from analysis import add_metrics, classify_quantiles
 import pytest
@@ -64,6 +64,28 @@ def test_polygon_records_explode_multipolygons_and_add_tooltips():
     assert len(records) == 2
     assert all(record["tooltip_title"] == "ZCTA 75022" for record in records)
     assert all(record["polygon"] for record in records)
+
+
+def test_polygon_records_simplify_dense_boundaries():
+    steps = 200
+    ring: list[tuple[float, float]] = []
+    for index in range(steps):
+        ring.append((-97.0 + index / steps, 33.0))
+    for index in range(steps):
+        ring.append((-96.0, 33.0 + index / steps))
+    for index in range(steps):
+        ring.append((-96.0 - index / steps, 34.0))
+    for index in range(steps):
+        ring.append((-97.0, 34.0 - index / steps))
+    ring.append(ring[0])
+    frame = mapped_frame().iloc[[0]].copy()
+    frame.geometry = [Polygon(ring)]
+
+    records = polygon_records(frame)
+
+    assert len(records) == 1
+    assert len(records[0]["polygon"][0]) < 20
+    assert "median_age" not in records[0]
 
 
 def test_build_layers_creates_base_outline_and_enabled_pois():

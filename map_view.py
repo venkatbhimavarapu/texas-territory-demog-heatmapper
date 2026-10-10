@@ -29,6 +29,16 @@ POI_COLORS: Final = {
 POI_LABELS: Final = {
     category_id: str(entry["label"]) for category_id, entry in POI_CATALOG.items()
 }
+# About 100 meters. Full TIGER ZCTA rings are too detailed for a browser map.
+GEOMETRY_SIMPLIFY_TOLERANCE: Final = 0.001
+COORDINATE_DECIMALS: Final = 5
+MAP_FIELDS: Final[tuple[str, ...]] = (
+    "zcta",
+    "fill_color",
+    "target_kids",
+    "total_population",
+    "median_household_income",
+)
 
 
 def _display_number(value: Any, *, currency: bool = False) -> str:
@@ -47,6 +57,8 @@ def _lists(value: Any) -> Any:
         return [_lists(item) for item in value]
     if isinstance(value, list):
         return [_lists(item) for item in value]
+    if isinstance(value, float):
+        return round(value, COORDINATE_DECIMALS)
     return value
 
 
@@ -56,16 +68,23 @@ def polygon_records(frame: gpd.GeoDataFrame) -> list[dict[str, Any]]:
         return []
 
     exploded = frame.explode(index_parts=False, ignore_index=True)
+    kept = [column for column in MAP_FIELDS if column in exploded.columns]
     records: list[dict[str, Any]] = []
     for _, row in exploded.iterrows():
         geometry = row.geometry
         if geometry is None or geometry.is_empty:
             continue
+        geometry = geometry.simplify(
+            GEOMETRY_SIMPLIFY_TOLERANCE,
+            preserve_topology=True,
+        )
+        if geometry.is_empty:
+            continue
         geometry_mapping = mapping(geometry)
         if geometry_mapping["type"] != "Polygon":
             continue
 
-        record = row.drop(labels=["geometry"]).to_dict()
+        record = row[kept].to_dict()
         record["polygon"] = _lists(geometry_mapping["coordinates"])
         record["tooltip_title"] = html.escape(
             f"ZCTA {record.get('zcta', 'Unknown')}"
