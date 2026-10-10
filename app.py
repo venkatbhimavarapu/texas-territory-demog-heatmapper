@@ -297,6 +297,19 @@ def render_dashboard(
     )
 
 
+def _census_failure_summary(exc: Exception) -> str:
+    """Return a log line that omits the Census key and request URL."""
+    message = " ".join(str(exc).split())
+    key = os.getenv("CENSUS_API_KEY", "").strip()
+    if key:
+        message = message.replace(key, "<redacted>")
+    redacted = [
+        "<redacted>" if ("://" in token or "key=" in token) else token
+        for token in message.split()
+    ]
+    return f"{type(exc).__name__}: {' '.join(redacted)[:500]}"
+
+
 def main() -> None:
     """Load configuration and data, then render the application."""
     st.set_page_config(page_title="Texas Territory Heatmapper", layout="wide")
@@ -327,7 +340,7 @@ def main() -> None:
     try:
         demographics = add_metrics(load_census_data(api_key))
     except Exception as exc:
-        LOGGER.error("Census load failed: %s", type(exc).__name__)
+        LOGGER.error("Census load failed: %s", _census_failure_summary(exc))
         st.error(
             "Unable to load Census demographics. Check the API key and network "
             "connection, then try again."

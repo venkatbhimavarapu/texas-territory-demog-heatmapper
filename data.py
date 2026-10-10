@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 import logging
+from pathlib import Path
+import tempfile
 import time
 from typing import Any, Final
+from zipfile import ZipFile
 
 import censusdis.data as ced
 from censusdis.values import ALL_SPECIAL_VALUES
@@ -18,6 +21,17 @@ import streamlit as st
 
 CENSUS_DATASET: Final = "acs/acs5/subject"
 CENSUS_VINTAGE: Final = 2024
+TEXAS_STATE_FIPS: Final = "48"
+# 2024 cartographic ZCTA files are not published. The TIGER fallback is a
+# 528 MB national extract, which exceeds a Cloud Run container. Use the 2020
+# 500k cartographic file and clip it to Texas instead.
+ZCTA_SHAPEFILE_URL: Final = (
+    "https://www2.census.gov/geo/tiger/GENZ2020/shp/cb_2020_us_zcta520_500k.zip"
+)
+STATE_SHAPEFILE_URL: Final = (
+    "https://www2.census.gov/geo/tiger/GENZ2024/shp/cb_2024_us_state_500k.zip"
+)
+SHAPEFILE_CACHE: Final = Path(tempfile.gettempdir()) / "texas-heatmapper-shapes"
 CACHE_TTL_SECONDS: Final = 86_400
 OVERPASS_CACHE_TTL_SECONDS: Final = 21_600  # 6 hours
 OVERPASS_RETRY_SECONDS: Final = 30
@@ -200,19 +214,85 @@ def normalize_census(frame: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     return result.to_crs(epsg=4326)
 
 
+def _cached_shapefile(url: str) -> Path:
+    """Download and extract one Census shapefile into the local temp cache."""
+    name = url.rsplit("/", 1)[-1].removesuffix(".zip")
+    directory = SHAPEFILE_CACHE / name
+    shapefile = directory / f"{name}.shp"
+    if shapefile.is_file():
+        return shapefile
+
+    directory.mkdir(parents=True, exist_ok=True)
+    response = requests.get(url, timeout=180, stream=True)
+    try:
+        if response.status_code != 200:
+            raise ValueError(
+                f"Census shapefile download failed with status {response.status_code}"
+            )
+        zip_path = directory / f"{name}.zip"
+        with zip_path.open("wb") as handle:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    handle.write(chunk)
+    finally:
+        response.close()
+
+    with ZipFile(zip_path) as archive:
+        archive.extractall(directory)
+    zip_path.unlink(missing_ok=True)
+    if not shapefile.is_file():
+        raise ValueError(f"Census shapefile archive did not contain {shapefile.name}")
+    return shapefile
+
+
+def texas_zcta_geometries(
+    states: gpd.GeoDataFrame, zctas: gpd.GeoDataFrame
+) -> gpd.GeoDataFrame:
+    """Return ZCTA polygons that intersect Texas."""
+    texas = states.loc[states["STATEFP"].astype("string") == TEXAS_STATE_FIPS]
+    if texas.empty:
+        raise ValueError("Texas state boundary was not found")
+    candidates = zctas.to_crs(texas.crs)
+    texas_shape = texas.geometry.union_all()
+    intersecting = candidates.loc[candidates.intersects(texas_shape)].copy()
+    intersecting["ZIP_CODE_TABULATION_AREA"] = (
+        intersecting["ZCTA5CE20"].astype("string").str.zfill(5)
+    )
+    return intersecting[["ZIP_CODE_TABULATION_AREA", "geometry"]]
+
+
+def _texas_zcta_geometry() -> gpd.GeoDataFrame:
+    """Load Texas ZCTA polygons without the national TIGER extract."""
+    states = gpd.read_file(_cached_shapefile(STATE_SHAPEFILE_URL))
+    texas = states.loc[states["STATEFP"].astype("string") == TEXAS_STATE_FIPS]
+    zctas = gpd.read_file(
+        _cached_shapefile(ZCTA_SHAPEFILE_URL),
+        bbox=tuple(texas.total_bounds),
+    )
+    return texas_zcta_geometries(states, zctas)
+
+
 def _download_census(api_key: str) -> gpd.GeoDataFrame:
-    """Download Texas-intersecting ZCTAs through censusdis."""
-    frame = ced.download(
+    """Download 2024 ACS estimates and attach Texas ZCTA geometry."""
+    estimates = ced.download(
         CENSUS_DATASET,
         CENSUS_VINTAGE,
         download_variables=CENSUS_VARIABLES,
         zip_code_tabulation_area="*",
-        download_contained_within={"state": "48"},
-        area_threshold=1e-12,
-        with_geometry=True,
+        with_geometry=False,
         api_key=api_key,
     )
-    return normalize_census(frame)
+    if "geometry" in estimates.columns:
+        estimates = estimates.drop(columns=["geometry"])
+    estimates["ZIP_CODE_TABULATION_AREA"] = (
+        estimates["ZIP_CODE_TABULATION_AREA"].astype("string").str.zfill(5)
+    )
+    merged = _texas_zcta_geometry().merge(
+        estimates,
+        on="ZIP_CODE_TABULATION_AREA",
+        how="inner",
+    )
+    return normalize_census(merged)
 
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner="Loading 2024 ACS data…")

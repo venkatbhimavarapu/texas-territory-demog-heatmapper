@@ -137,6 +137,19 @@ def test_all_missing_primary_metric_is_non_crashing():
     assert any("no usable values" in warning.value.lower() for warning in test_app.warning)
 
 
+def test_census_failure_summary_redacts_key_and_url():
+    import os
+
+    os.environ["CENSUS_API_KEY"] = "super-secret-key"
+    summary = app._census_failure_summary(
+        RuntimeError("https://api.census.gov/data?key=super-secret-key failed")
+    )
+
+    assert summary.startswith("RuntimeError:")
+    assert "super-secret-key" not in summary
+    assert "api.census.gov" not in summary
+
+
 def test_census_failure_does_not_expose_api_key():
     def smoke_census_failure():
         import os

@@ -4,7 +4,7 @@ import geopandas as gpd
 import pandas as pd
 import pytest
 import requests
-from shapely.geometry import Point
+from shapely.geometry import Point, box
 
 import data
 
@@ -53,23 +53,50 @@ def test_normalize_census_reprojects_geometry():
     assert result.geometry.x.iloc[0] == pytest.approx(-97.0)
 
 
-def test_download_census_uses_supported_texas_containment(monkeypatch):
+def test_texas_zcta_geometries_keeps_intersecting_polygons():
+    states = gpd.GeoDataFrame(
+        {"STATEFP": ["48", "40"]},
+        geometry=[box(-98, 32, -96, 34), box(-100, 34, -99, 35)],
+        crs="EPSG:4326",
+    )
+    zctas = gpd.GeoDataFrame(
+        {"ZCTA5CE20": ["75022", "73001"]},
+        geometry=[box(-97.5, 32.5, -97, 33), box(-99.8, 34.2, -99.2, 34.8)],
+        crs="EPSG:4326",
+    )
+
+    result = data.texas_zcta_geometries(states, zctas)
+
+    assert list(result["ZIP_CODE_TABULATION_AREA"]) == ["75022"]
+    assert result.crs.to_epsg() == 4326
+
+
+def test_download_census_joins_estimates_to_texas_geometry(monkeypatch):
     observed = {}
 
     def fake_download(*args, **kwargs):
         observed["args"] = args
         observed["kwargs"] = kwargs
-        return raw_census_frame()
+        return pd.DataFrame(raw_census_frame().drop(columns=["geometry"]))
+
+    def fake_geometry():
+        return gpd.GeoDataFrame(
+            {"ZIP_CODE_TABULATION_AREA": ["75022"]},
+            geometry=[Point(-97.0, 33.0)],
+            crs="EPSG:4326",
+        )
 
     monkeypatch.setattr(data.ced, "download", fake_download)
+    monkeypatch.setattr(data, "_texas_zcta_geometry", fake_geometry)
 
     result = data._download_census("test-key")
 
     assert len(result) == 1
+    assert result.loc[0, "zcta"] == "75022"
     assert observed["args"][:2] == ("acs/acs5/subject", 2024)
     assert observed["kwargs"]["zip_code_tabulation_area"] == "*"
-    assert observed["kwargs"]["with_geometry"] is True
-    assert observed["kwargs"]["download_contained_within"] == {"state": "48"}
+    assert observed["kwargs"]["with_geometry"] is False
+    assert "download_contained_within" not in observed["kwargs"]
     assert observed["kwargs"]["api_key"] == "test-key"
 
 
