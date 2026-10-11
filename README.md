@@ -1,2 +1,2 @@
 # texas-territory-demog-heatmapper
-The app will visualize Census demographics (specifically focusing on family households and children's ages) for all ZIP Code Tabulation Areas (ZCTAs) in Texas. The goal is to evaluate potential retail franchise territories (e.g., Flower Mound, Roanoke).
+The app will visualize Census demographics (specifically focusing on family households and children's ages) for all ZIP Code Tabulation Areas (ZCTAs) in Texas. The goal is to evaluate potential retail franchise territories (e.g., Flower Mound, Roanoke). You could use leverage the location of schools, pediatricians/clinics, competitor businesses to evaluate potential franchise territories.
